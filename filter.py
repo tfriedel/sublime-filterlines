@@ -1,53 +1,57 @@
 import functools
 import itertools
 import re
-
 import sublime
 import sublime_plugin
+
+
+settings_path = 'Filter Lines.sublime-settings'
 
 
 class PromptFilterToLinesCommand(sublime_plugin.WindowCommand):
 
     def run(self, search_type = 'string'):
+        self._run(search_type, "filter_to_lines", "Filter")
+
+    def _run(self, search_type, filter_command, filter_verb):
+        self.load_settings()
+        self.filter_command = filter_command
         self.search_type = search_type
-
-        settings = sublime.load_settings('Filter Lines.sublime-settings')
-
-        search_text = ""
-        if settings.get('preserve_search', True):
-            search_text = settings.get('latest_search', '')
-
-        invert_search = settings.get('invert_search', False)
-
-        if self.search_type == 'string':
-            prompt = "Filter to lines %s: " % ('not containing' if invert_search else 'containing')
+        if search_type == 'string':
+            prompt = "%s to lines %s: " % (filter_verb, 'not containing' if self.invert_search else 'containing')
         else:
-            prompt = "Filter to lines %s regex: " % ('not matching' if invert_search else 'matching')
+            prompt = "%s to lines %s: " % (filter_verb, 'not matching' if self.invert_search else 'matching')
+        sublime.active_window().show_input_panel(prompt, self.search_text, self.on_done, None, None)
 
-        sublime.active_window().show_input_panel(prompt, search_text, self.on_done, None, None)
-
-
-    def on_done(self, text):
+    def on_done(self, search_text):
+        self.search_text = search_text
+        self.prompt_for_custom_separator()
         if self.window.active_view():
-            settings = sublime.load_settings('Filter Lines.sublime-settings')
-            if settings.get('preserve_search', True):
-                settings.set('latest_search', text)
+            self.window.active_view().run_command(self.filter_command, { 
+                "needle": self.search_text, "search_type": self.search_type })
 
-            if (settings.get('custom_separator', False) and
-                    settings.get('use_new_buffer_for_filter_results', True)):
-                f = functools.partial(self.on_separator, text)
-                default_sep = settings.get('default_custom_separator', r'(\n|\r\n|\r)')
-                sublime.active_window().show_input_panel('Custom regex separator', default_sep, f, None, None)
-                return
+    def prompt_for_custom_separator(self):
+        if (self.settings.get('custom_separator', False) and
+                self.settings.get('use_new_buffer_for_filter_results', True)):
+            f = functools.partial(self.on_separator)
+            default_sep = self.settings.get('default_custom_separator', r'(\n|\r\n|\r)')
+            sublime.active_window().show_input_panel('Custom regex separator', default_sep, f, None, None)
+            return
 
-            self.window.active_view().run_command("filter_to_lines", { "needle": text, "search_type": self.search_type })
+    def on_separator(self, separator):
+        self.window.active_view().run_command(self.filter_command, {
+            "needle": self.search_text, "search_type": self.search_type, "separator": separator})
 
+    def load_settings(self):
+        self.settings = sublime.load_settings(settings_path)
+        self.search_text = ""
+        if self.settings.get('preserve_search', True):
+            self.search_text = self.settings.get('latest_search', '')
+        self.invert_search = self.settings.get('invert_search', False)
 
-    def on_separator(self, text, separator):
-        self.window.active_view().run_command("filter_to_lines", {
-            "needle": text, "search_type": self.search_type,
-            "separator": separator})
-
+    def save_settings(self):
+        if self.settings.get('preserve_search', True):
+            self.settings.set('latest_search', self.search_text)
 
 
 class FilterToLinesCommand(sublime_plugin.TextCommand):
@@ -59,7 +63,7 @@ class FilterToLinesCommand(sublime_plugin.TextCommand):
         self.search_type = search_type
         self.separator = separator
 
-        settings = sublime.load_settings('Filter Lines.sublime-settings')
+        settings = sublime.load_settings(settings_path)
 
         if search_type == 'string':
             self.case_sensitive = settings.get('case_sensitive_string_search', False)
@@ -112,16 +116,13 @@ class FilterToLinesCommand(sublime_plugin.TextCommand):
             message = 'Filtering for "%s" %s\n\n0 matches\n' % (self.needle, '(case-sensitive)' if self.case_sensitive else '(not case-sensitive)')
             results_view.run_command('append', { 'characters': message, 'force': True, 'scroll_to_end': False })
 
-
     def filter_in_place(self, edit):
         regions = [ sublime.Region(0, self.view.size()) ]
-
         for region in reversed(regions):
             lines = self.view.split_by_newlines(region)
             for line in reversed(lines):
                 if not (bool(self.match_pattern.search(line)) ^ self.invert_search):
                     self.view.erase(edit, self.view.full_line(line))    
-
 
     def itersplit(self, sep, s):
         exp = re.compile(sep)
