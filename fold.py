@@ -34,7 +34,6 @@ class FoldToLinesCommand(sublime_plugin.TextCommand):
             self.match_pattern = re.compile(self.needle, 0 if self.case_sensitive else re.IGNORECASE)
         self.fold(edit)
 
-
     def fold(self, edit):
         regions = [ sublime.Region(0, self.view.size()) ]
         for region in reversed(regions):

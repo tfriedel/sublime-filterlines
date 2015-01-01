@@ -21,5 +21,8 @@
 	// If true, show an input to specify a regex separator
 	// to split the text (instead of using line separator)
 	"custom_separator": false,
-	"default_custom_separator": "(\n|\r\n|\r)"
+	"default_custom_separator": "(\n|\r\n|\r)",
+
+	// Show source file line numbers in results
+	"line_numbers": false
 }
