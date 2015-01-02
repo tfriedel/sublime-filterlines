@@ -25,22 +25,9 @@ class PromptFilterToLinesCommand(sublime_plugin.WindowCommand):
 
     def on_search_text_entered(self, search_text):
         self.search_text = search_text
-        self.prompt_for_custom_separator()
         if self.window.active_view():
             self.window.active_view().run_command(self.filter_command, { 
                 "needle": self.search_text, "search_type": self.search_type })
-
-    def prompt_for_custom_separator(self):
-        if (self.settings.get('custom_separator', False) and
-                self.settings.get('use_new_buffer_for_filter_results', True)):
-            f = functools.partial(self.on_separator_entered)
-            default_sep = self.settings.get('default_custom_separator', r'(\n|\r\n|\r)')
-            sublime.active_window().show_input_panel('Custom regex separator', default_sep, f, None, None)
-            return
-
-    def on_separator_entered(self, separator):
-        self.window.active_view().run_command(self.filter_command, {
-            "needle": self.search_text, "search_type": self.search_type, "separator": separator})
 
     def load_settings(self):
         self.settings = sublime.load_settings(settings_path)
@@ -56,41 +43,26 @@ class PromptFilterToLinesCommand(sublime_plugin.WindowCommand):
 
 class FilterToLinesCommand(sublime_plugin.TextCommand):
 
-    def run(self, edit, needle, search_type, separator=None):
-        sublime.status_message("Filtering")
-
-        self.needle = needle
-        self.haystack = self.view.file_name()
-        self.search_type = search_type
-        self.separator = separator
-
+    def run(self, edit, needle, search_type):
         settings = sublime.load_settings(settings_path)
-
-        if search_type == 'string':
-            self.case_sensitive = settings.get('case_sensitive_string_search', False)
-        elif search_type == 'regex':
-            self.case_sensitive = settings.get('case_sensitive_regex_search', True)
-
         self.invert_search = settings.get('invert_search', False)
-
-        if self.search_type == 'string':
-            self.match_pattern = re.compile(re.escape(self.needle), 0 if self.case_sensitive else re.IGNORECASE)
-        else:
-            self.match_pattern = re.compile(self.needle, 0 if self.case_sensitive else re.IGNORECASE)
-
+        flags = self.get_search_flags(search_type, settings)
+        lines = itertools.groupby(self.view.find_all(needle, flags), self.view.line)
         self.line_numbers = settings.get('line_numbers', False)
+        self.show_filtered_lines(edit, lines)
 
-        if settings.get('use_new_buffer_for_filter_results', True):
-            self.filter_to_new_buffer(edit)
-        else:
-            self.filter_in_place(edit)
+    def get_search_flags(self, search_type, settings):
+        flags = 0
+        if search_type == 'string':
+            flags = sublime.LITERAL
+            if not settings.get('case_sensitive_string_search', False):
+                flags = flags | sublime.IGNORECASE
+        elif search_type == 'regex':
+            if not settings.get('case_sensitive_string_search', False):
+                flags = sublime.IGNORECASE
+        return flags
 
-        sublime.status_message("")
-
-    # def filter(self, edit):
-    #     for line, matches in groupby(self.view.find_all(self.needle, sublime.IGNORECASE), self.view.line):
-
-    def filter_to_new_buffer(self, edit):
+    def show_filtered_lines(self, edit, lines):
         results_view = self.view.window().new_file()
         results_view.set_name('Filter Results')
         results_view.set_scratch(True)
@@ -99,63 +71,31 @@ class FilterToLinesCommand(sublime_plugin.TextCommand):
         # message = 'Filtering %s for "%s"\n\n' % (self.haystack, self.needle)
         # results_view.run_command('append', {'characters': message, 'force': True, 'scroll_to_end': False})
 
-        regions = [sublime.Region(0, self.view.size())]
-
-        if self.separator is None:
-            lines = (self.view.split_by_newlines(r) for r in regions)
-            lines = map(self.view.substr, itertools.chain.from_iterable(lines))
+        if self.invert_search:
+            source_lines = self.view.lines(sublime.Region(0, self.view.size()))
+            filtered_line_numbers = [self.view.rowcol(line.begin())[0] for line, _ in lines]
+            for line_number in reversed(filtered_line_numbers):
+                print('%d: %s' % (line_number, self.view.substr(source_lines[line_number])))
+                del source_lines[line_number]
+            text = ''
+            for line in source_lines:
+                text += self.prepare_output_line(line, None)
+            results_view.run_command('append', {'characters': text, 'force': True, 'scroll_to_end': False})
         else:
-            lines = itertools.chain.from_iterable(self.itersplit(separator, self.view.substr(r)) for r in regions)
-
-        text = ''
-        line_number = 0
-        matches = 0
-        for line in lines:
-            line_number = line_number + 1
-            if bool(self.match_pattern.search(line)) ^ self.invert_search:
-                matches = matches + 1
-                if self.separator is None:
-                    line += '\n'
-                if self.line_numbers:
-                    text += '%5d: %s' % (line_number, line)
-                else:
-                    text += line
-
-        results_view.run_command('append', {'characters': text, 'force': True, 'scroll_to_end': False})
+            text = ''
+            for line, matches in lines:
+                text += self.prepare_output_line(line, matches)
+                # for match in matches:
+                #    results_view.sel().add(match)
+            results_view.run_command('append', {'characters': text, 'force': True, 'scroll_to_end': False})
 
         # message = '\n%d matches\n' % (matches)
         # results_view.run_command('append', {'characters': message, 'force': True, 'scroll_to_end': False})
-
         results_view.set_syntax_file(self.view.settings().get('syntax'))
 
-    def filter_in_place(self, edit):
-        regions = [sublime.Region(0, self.view.size())]
-        for region in reversed(regions):
-            lines = self.view.split_by_newlines(region)
-            for line in reversed(lines):
-                if not (bool(self.match_pattern.search(line)) ^ self.invert_search):
-                    self.view.erase(edit, self.view.full_line(line))    
-
-    def itersplit(self, sep, s):
-        exp = re.compile(sep)
-        pos = 0
-        old_start = 0
-        from_begin = False
-        while True:
-            m = exp.search(s, pos)
-            if not m:
-                if pos < len(s):
-                    if not from_begin:
-                        yield s[pos:]
-                    else:
-                        yield s[old_start:]
-                break
-            if pos < m.start() and not from_begin:
-                yield s[pos:m.end()]
-            elif from_begin:
-                yield s[old_start:m.start()]
-            elif m.start() == 0:
-                # pattern is found at beginning, reverse yielding slices
-                from_begin = True
-            pos = m.end()
-            old_start = m.start()
+    def prepare_output_line(self, line, matches):
+        if self.line_numbers and not self.invert_search:
+            line_number = self.view.rowcol(line.begin())[0]
+            return '%5d: %s\n' % (line_number, self.view.substr(line))
+        else:
+            return '%s\n' % (self.view.substr(line))
