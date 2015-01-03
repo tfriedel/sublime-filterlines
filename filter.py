@@ -4,9 +4,7 @@ import re
 import sublime
 import sublime_plugin
 
-
 settings_path = 'Filter Lines.sublime-settings'
-
 
 class PromptFilterToLinesCommand(sublime_plugin.WindowCommand):
 
