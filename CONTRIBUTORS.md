@@ -9,7 +9,8 @@ If you want to write a plugin, Daniel's tutorial is a good place to start.
 
 ### Contributors
 
-- Nathan Kot (nathankot) for suggesting filtered code folding
-- Marc Schlaich (schlamar) for adding support for custom separators
-- grayhare for fixing filtering in place
+- Nathan Kot (nathankot) for suggesting folding filtered lines
+- Marc Schlaich (schlamar) for adding support for custom separators (Sublime Text 2 only)
+- grayhare for fixing filtering in place (Sublime Text 2 only)
+- skafian and purplelizard for suggesting source line numbers (Sublime Text 3 only)
 

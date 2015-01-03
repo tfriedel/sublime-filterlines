@@ -25,6 +25,7 @@ class PromptFilterToLinesCommand(sublime_plugin.WindowCommand):
 
     def on_search_text_entered(self, search_text):
         self.search_text = search_text
+        self.save_settings()
         if self.window.active_view():
             self.window.active_view().run_command(self.filter_command, { 
                 "needle": self.search_text, "search_type": self.search_type })
@@ -68,14 +69,10 @@ class FilterToLinesCommand(sublime_plugin.TextCommand):
         results_view.set_scratch(True)
         results_view.settings().set('word_wrap', self.view.settings().get('word_wrap'))
 
-        # message = 'Filtering %s for "%s"\n\n' % (self.haystack, self.needle)
-        # results_view.run_command('append', {'characters': message, 'force': True, 'scroll_to_end': False})
-
         if self.invert_search:
             source_lines = self.view.lines(sublime.Region(0, self.view.size()))
             filtered_line_numbers = [self.view.rowcol(line.begin())[0] for line, _ in lines]
             for line_number in reversed(filtered_line_numbers):
-                print('%d: %s' % (line_number, self.view.substr(source_lines[line_number])))
                 del source_lines[line_number]
             text = ''
             for line in source_lines:
@@ -85,12 +82,8 @@ class FilterToLinesCommand(sublime_plugin.TextCommand):
             text = ''
             for line, matches in lines:
                 text += self.prepare_output_line(line, matches)
-                # for match in matches:
-                #    results_view.sel().add(match)
             results_view.run_command('append', {'characters': text, 'force': True, 'scroll_to_end': False})
 
-        # message = '\n%d matches\n' % (matches)
-        # results_view.run_command('append', {'characters': message, 'force': True, 'scroll_to_end': False})
         results_view.set_syntax_file(self.view.settings().get('syntax'))
 
     def prepare_output_line(self, line, matches):
