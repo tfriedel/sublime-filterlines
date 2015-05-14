@@ -80,6 +80,7 @@ class FilterToLinesCommand(sublime_plugin.TextCommand):
             text = ''
             for line, matches in lines:
                 text += self.prepare_output_line(line, matches)
+            text = "\n".join(sorted(text.split('\n'), key=lambda s: s.lower())) # sort lines
             results_view.run_command('append', {'characters': text, 'force': True, 'scroll_to_end': False})
 
         results_view.set_syntax_file(self.view.settings().get('syntax'))

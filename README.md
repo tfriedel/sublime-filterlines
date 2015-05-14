@@ -1,6 +1,11 @@
 Filter Lines
 ============
 
+Fork of https://github.com/davidpeckham/sublime-filterlines/issues
+
+This little modification sorts the resulting list, if not searching in invert mode.
+
+
 Quickly find all lines matching a string or regular expression.
 
 * Edit > Line > Filter With Regex  <kbd>⌘+K</kbd> <kbd>⌘+R</kbd>
